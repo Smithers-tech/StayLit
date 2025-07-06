@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- For Android 13 (API 33) and above, to post notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- REQUIRED for foregroundServiceType="specialUse" on API 34+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Permission for Quick Settings Tile -->
+    <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE" />
+
+    <application
+        android:name=".KeepScreenOnApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/full_backup_content"
+        android:icon="@drawable/ic_lightbulb_fill"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_lightbulb_fill"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.KeepScreenOn"
+        tools:node="replace">
+
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTop"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Widget Declaration -->
+        <receiver
+            android:name=".ScreenOnWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/app_widget_info" />
+        </receiver>
+
+        <!-- Declare the Foreground Service -->
+        <service
+            android:name=".KeepScreenOnService"
+            android:foregroundServiceType="specialUse" />
+
+        <!-- Declare the Quick Settings Tile Service -->
+        <service
+            android:name=".KeepScreenOnTileService"
+            android:label="@string/tile_label"
+            android:icon="@drawable/ic_qs_lightbulb_on"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+    </application>
+</manifest>
