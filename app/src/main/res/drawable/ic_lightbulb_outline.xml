@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Warm red circle background -->
+    <path
+        android:fillColor="#EF4444"
+        android:pathData="M12,1A11,11 0 1,1 11.999,1Z" />
+
+    <!-- Scaled light gray lightbulb icon -->
+    <group
+        android:scaleX="0.85"
+        android:scaleY="0.85"
+        android:translateX="1.8"
+        android:translateY="1.8">
+
+        <path
+            android:fillColor="#F5F5F5"
+            android:pathData="M9,21c0,0.5 0.4,1 1,1h4c0.6,0 1,-0.5 1,-1v-1L9,20v1z
+                              M12,2C8.1,2 5,5.1 5,9c0,2.4 1.2,4.5 3,5.7L8,17
+                              c0,0.5 0.4,1 1,1h6c0.6,0 1,-0.5 1,-1v-2.3
+                              c1.8,-1.3 3,-3.4 3,-5.7 0,-3.9 -3.1,-7 -7,-7z" />
+
+        <!-- Slash across the bulb -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:pathData="M6,6 L18,18" />
+    </group>
+</vector>

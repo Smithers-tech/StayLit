@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- TODO: Customize your backup rules here.
+         By default, this will back up all app data.
+         You can exclude specific files or directories if needed.
+         Example: <exclude domain="file" path="my_sensitive_data.txt"/>
+    -->
+</full-backup-content>
