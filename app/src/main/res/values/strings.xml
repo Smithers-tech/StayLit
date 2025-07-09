@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Stay Lit</string> <!-- MODIFIED: Renamed app_name -->
-    <!-- REQUIRED for foregroundServiceType="specialUse" on API 34+ -->
+    <string name="app_name">Stay Lit</string>
     <string name="special_use_foreground_service_description">This app uses a foreground service to keep your device screen on continuously, preventing it from dimming or locking while the app is active. This is its primary purpose.</string>
     <string name="app_widget_description">A widget to toggle the screen on/off service.</string>
-    <string name="tile_label">Stay Lit</string> <!-- ADDED: String for Quick Settings Tile label -->
+    <string name="tile_label">Stay Lit</string>
+    <string name="auto_off_duration_label">Auto-off after:</string> <!-- ADDED -->
+    <string-array name="auto_off_durations_array"> <!-- ADDED -->
+        <item>10 minutes</item>
+        <item>20 minutes</item>
+        <item>30 minutes</item>
+        <item>60 minutes</item>
+        <item>Never</item>
+    </string-array>
 </resources>

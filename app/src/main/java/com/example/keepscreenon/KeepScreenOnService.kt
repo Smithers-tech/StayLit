@@ -14,6 +14,7 @@ import android.content.pm.ServiceInfo
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import android.os.Handler
 import android.os.Looper
+import android.content.SharedPreferences
 
 class KeepScreenOnService : Service() {
 
@@ -28,13 +29,17 @@ class KeepScreenOnService : Service() {
         stopService()
     }
 
-    private val AUTO_OFF_DELAY_MILLIS = 30 * 60 * 1000L // 30 minutes
+    // SharedPreferences constants
+    private val PREFS_NAME = "KeepScreenOnPrefs"
+
 
     companion object {
         const val ACTION_START_FOREGROUND_SERVICE = "com.example.keepscreenon.action.START_FOREGROUND_SERVICE"
         const val ACTION_STOP_FOREGROUND_SERVICE = "com.example.keepscreenon.action.STOP_FOREGROUND_SERVICE"
         const val ACTION_SERVICE_STATUS_UPDATE = "com.example.keepscreenon.action.SERVICE_STATUS_UPDATE"
         const val EXTRA_IS_ACTIVE = "is_active"
+        const val KEY_AUTO_OFF_DURATION = "auto_off_duration" // in minutes
+        const val DEFAULT_AUTO_OFF_MINUTES = 30 // Default auto-off duration
     }
 
     override fun onCreate() {
@@ -63,8 +68,18 @@ class KeepScreenOnService : Service() {
         wakeLock?.acquire()
         Log.d(TAG, "WakeLock acquired.")
 
-        handler.postDelayed(autoOffRunnable, AUTO_OFF_DELAY_MILLIS)
-        Log.d(TAG, "Auto-off scheduled for ${AUTO_OFF_DELAY_MILLIS / 1000 / 60} minutes.")
+        // Read auto-off duration from SharedPreferences
+        val sharedPrefs: SharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val autoOffMinutes = sharedPrefs.getInt(KEY_AUTO_OFF_DURATION, DEFAULT_AUTO_OFF_MINUTES)
+        val autoOffDelayMillis = if (autoOffMinutes == 0) 0L else autoOffMinutes * 60 * 1000L // 0 minutes means "Never"
+
+        if (autoOffDelayMillis > 0) {
+            handler.postDelayed(autoOffRunnable, autoOffDelayMillis)
+            Log.d(TAG, "Auto-off scheduled for ${autoOffMinutes} minutes.")
+        } else {
+            handler.removeCallbacks(autoOffRunnable) // Ensure no old callbacks are pending
+            Log.d(TAG, "Auto-off is set to Never. No timer scheduled.")
+        }
 
         val notification = buildNotification(
             getString(R.string.app_name),
@@ -124,13 +139,13 @@ class KeepScreenOnService : Service() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(content)
-            .setSmallIcon(R.drawable.ic_qs_lightbulb_on) // MODIFIED: Use ic_qs_lightbulb_on for notification icon
+            .setSmallIcon(R.drawable.ic_qs_lightbulb_on)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .addAction(R.drawable.ic_lightbulb_outline, "Turn Off", stopPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationManager.IMPORTANCE_HIGH) // MODIFIED: Set high priority for notification
+            .setPriority(NotificationManager.IMPORTANCE_HIGH)
     }
 
     private fun broadcastServiceStatus(isActive: Boolean) {
