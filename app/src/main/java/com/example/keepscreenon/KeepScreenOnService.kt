@@ -11,9 +11,9 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import android.util.Log
 import android.content.pm.ServiceInfo
-import androidx.localbroadcastmanager.content.LocalBroadcastManager // ADDED import
-import android.os.Handler // ADDED import
-import android.os.Looper // ADDED import
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import android.os.Handler
+import android.os.Looper
 
 class KeepScreenOnService : Service() {
 
@@ -22,15 +22,12 @@ class KeepScreenOnService : Service() {
     private val NOTIFICATION_ID = 101
     private val TAG = "KeepScreenOnService"
 
-    // ADDED: Handler for delayed tasks
     private val handler = Handler(Looper.getMainLooper())
-    // ADDED: Runnable for auto-off
     private val autoOffRunnable = Runnable {
         Log.d(TAG, "Auto-off timer expired. Stopping service.")
         stopService()
     }
 
-    // ADDED: Auto-off duration (30 minutes in milliseconds)
     private val AUTO_OFF_DELAY_MILLIS = 30 * 60 * 1000L // 30 minutes
 
     companion object {
@@ -58,23 +55,23 @@ class KeepScreenOnService : Service() {
     private fun startService() {
         Log.d(TAG, "Starting KeepScreenOnService.")
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        // Ensure both flags are used for robust wake lock
         wakeLock = powerManager.newWakeLock(
             PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "StayLitApp::MyWakeLockTag" // Changed tag to StayLitApp
+            "StayLitApp::MyWakeLockTag"
         )
         wakeLock?.acquire()
         Log.d(TAG, "WakeLock acquired.")
 
-        // MODIFIED: Post delayed auto-off
         handler.postDelayed(autoOffRunnable, AUTO_OFF_DELAY_MILLIS)
         Log.d(TAG, "Auto-off scheduled for ${AUTO_OFF_DELAY_MILLIS / 1000 / 60} minutes.")
 
         val notification = buildNotification(
-            getString(R.string.app_name), // Use app name from strings
-            "Screen will stay on." // MODIFIED: Generic content text
+            getString(R.string.app_name),
+            "Screen will stay on."
         ).build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(NOTIFICATION_ID, notification)
@@ -86,7 +83,6 @@ class KeepScreenOnService : Service() {
 
     private fun stopService() {
         Log.d(TAG, "Stopping KeepScreenOnService.")
-        // MODIFIED: Remove any pending auto-off callbacks
         handler.removeCallbacks(autoOffRunnable)
         Log.d(TAG, "Removed pending auto-off callbacks.")
 
@@ -102,8 +98,7 @@ class KeepScreenOnService : Service() {
         stopSelf()
         Log.d(TAG, "Foreground service stopped.")
 
-        // ADDED LOG: Confirming broadcast attempt
-        Log.d(TAG, "Attempting to broadcast service status: false to widget.")
+        Log.d(TAG, "Attempting to broadcast service status: false to widget and tile.")
         broadcastServiceStatus(false)
     }
 
@@ -135,7 +130,7 @@ class KeepScreenOnService : Service() {
             .addAction(R.drawable.ic_lightbulb_outline, "Turn Off", stopPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationManager.IMPORTANCE_HIGH) // MODIFIED: Set high priority for notification
     }
 
     private fun broadcastServiceStatus(isActive: Boolean) {
@@ -153,7 +148,6 @@ class KeepScreenOnService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "KeepScreenOnService onDestroy called.")
-        // MODIFIED: Ensure callbacks are removed on destroy as well
         handler.removeCallbacks(autoOffRunnable)
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
