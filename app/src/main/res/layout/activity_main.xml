@@ -5,6 +5,8 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
     tools:context=".MainActivity">
 
     <TextView
@@ -18,17 +20,45 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.2"
         app:layout_constraintVertical_chainStyle="packed"
         android:layout_marginBottom="24dp" />
 
-    <Button
+    <ImageButton
         android:id="@+id/toggleScreenOnButton"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:scaleType="fitCenter"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_lightbulb_outline"
+        android:contentDescription="@string/app_name"
+        app:layout_constraintBottom_toTopOf="@+id/autoOffDurationLabel"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/statusTextView"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/autoOffDurationLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Turn On Keep Screen On"
+        android:text="@string/auto_off_duration_label"
+        android:textSize="16sp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toTopOf="@+id/autoOffDurationSpinner"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/toggleScreenOnButton" />
+
+    <Spinner
+        android:id="@+id/autoOffDurationSpinner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:entries="@array/auto_off_durations_array"
+        android:minWidth="150dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/statusTextView" />
-
+        app:layout_constraintTop_toBottomOf="@+id/autoOffDurationLabel"
+        app:layout_constraintVertical_bias="0.0" />
 </androidx.constraintlayout.widget.ConstraintLayout>
