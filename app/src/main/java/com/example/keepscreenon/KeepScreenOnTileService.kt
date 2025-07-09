@@ -77,7 +77,6 @@ class KeepScreenOnTileService : TileService() {
                 Log.d(TAG, "Tile: Attempting to start foreground service (API >= O).")
             } else {
                 startService(serviceIntent)
-                Log.d(TAG, "Tile: Attempting to start service (API < O).")
             }
         }
         // Update tile state immediately after click, assuming the service will respond
@@ -91,13 +90,21 @@ class KeepScreenOnTileService : TileService() {
     }
 
     private fun updateTileState() {
-        val tile = qsTile ?: return // Get the tile object, return if null
+        val tile = qsTile ?: return
         tile.state = if (isServiceRunning) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+
+        // First line (title)
         tile.label = getString(R.string.tile_label)
-        // MODIFIED: Use new QS specific icons
-        tile.icon = if (isServiceRunning) Icon.createWithResource(this, R.drawable.ic_qs_lightbulb_on)
-        else Icon.createWithResource(this, R.drawable.ic_qs_lightbulb_off)
-        tile.updateTile() // Important: Call updateTile() to apply changes
+
+        // Second line (subtitle)
+        tile.subtitle = if (isServiceRunning) "On" else "Off"
+
+        tile.icon = if (isServiceRunning)
+            Icon.createWithResource(this, R.drawable.ic_qs_lightbulb_on)
+        else
+            Icon.createWithResource(this, R.drawable.ic_qs_lightbulb_off)
+
+        tile.updateTile()
         Log.d(TAG, "Tile state updated to: ${if (isServiceRunning) "ACTIVE" else "INACTIVE"}")
     }
 
