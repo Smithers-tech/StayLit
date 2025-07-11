@@ -1,52 +1,52 @@
-package com.example.keepscreenon // IMPORTANT: Ensure this package name matches your project's actual package name!
+package com.example.keepscreenon
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.widget.Button
-import android.widget.TextView
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import android.util.Log
-import android.app.NotificationManager
-import android.Manifest
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import android.widget.Spinner
-import android.widget.ArrayAdapter
-import android.widget.AdapterView
-import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
-import android.widget.ImageButton // ADDED
+import android.os.PowerManager
+import android.provider.Settings
+import android.util.Log
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.Spinner
+import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 class MainActivity : AppCompatActivity() {
 
-    private var isServiceRunning: Boolean = false
-    private lateinit var toggleButton: ImageButton // CHANGED from Button to ImageButton
+    private lateinit var toggleButton: ImageButton
     private lateinit var statusTextView: TextView
     private lateinit var autoOffDurationSpinner: Spinner
     private lateinit var sharedPrefs: SharedPreferences
+    // ADDED: Button to handle battery optimization settings
+    private lateinit var batteryOptimizationsButton: Button
 
     private val TAG = "MainActivity"
 
+    // --- CHANGE: We no longer need a local isServiceRunning variable ---
+    // We will now use KeepScreenOnService.isServiceRunning directly.
+
     private val serviceStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            Log.d(TAG, "BroadcastReceiver onReceive triggered for action: ${intent?.action}")
-
             if (intent?.action == KeepScreenOnService.ACTION_SERVICE_STATUS_UPDATE) {
-                val receivedIsActive = intent.getBooleanExtra(KeepScreenOnService.EXTRA_IS_ACTIVE, false)
-                Log.d(TAG, "Received service status update: $receivedIsActive")
-                if (isServiceRunning != receivedIsActive) {
-                    isServiceRunning = receivedIsActive
-                    updateUi()
-                } else {
-                    Log.d(TAG, "Service status unchanged: $isServiceRunning. No UI update needed.")
-                }
+                Log.d(TAG, "Received service status update broadcast.")
+                updateUi() // Update UI whenever the service status changes
             }
         }
     }
@@ -56,54 +56,113 @@ class MainActivity : AppCompatActivity() {
     ) { isGranted: Boolean ->
         if (isGranted) {
             Log.d(TAG, "Notification permission granted.")
-            checkAndToggleService()
+            toggleKeepScreenOnService()
         } else {
-            Log.d(TAG, "Notification permission denied. Cannot show status.")
+            Log.d(TAG, "Notification permission denied.")
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        setContentView(R.layout.activity_main) // Ensure your layout file has the new button
 
         toggleButton = findViewById(R.id.toggleScreenOnButton)
         statusTextView = findViewById(R.id.statusTextView)
         autoOffDurationSpinner = findViewById(R.id.autoOffDurationSpinner)
+        // Make sure you have a button with this ID in your activity_main.xml
+        // batteryOptimizationsButton = findViewById(R.id.batteryOptimizationsButton)
 
         sharedPrefs = getSharedPreferences("KeepScreenOnPrefs", Context.MODE_PRIVATE)
 
         val filter = IntentFilter(KeepScreenOnService.ACTION_SERVICE_STATUS_UPDATE)
         LocalBroadcastManager.getInstance(this).registerReceiver(serviceStatusReceiver, filter)
 
-        Log.d(TAG, "BroadcastReceiver registered.")
-
-        isServiceRunning = isServiceRunning(this, KeepScreenOnService::class.java)
-        updateUi()
-        Log.d(TAG, "Initial service running state: $isServiceRunning")
-
         setupAutoOffDurationSpinner()
 
         toggleButton.setOnClickListener {
             Log.d(TAG, "Button clicked.")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                val channelExists = notificationManager.getNotificationChannel(
-                    (application as KeepScreenOnApplication).NOTIFICATION_CHANNEL_ID
-                ) != null
-                Log.d(TAG, "Notification channel exists: $channelExists")
+            checkPermissionsAndToggleService()
+        }
 
-                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                    Log.d(TAG, "POST_NOTIFICATIONS permission already granted.")
-                    checkAndToggleService()
-                } else {
-                    Log.d(TAG, "Requesting POST_NOTIFICATIONS permission.")
+        // ADDED: Logic for the battery optimization button
+        // batteryOptimizationsButton.setOnClickListener {
+        //     promptToDisableBatteryOptimizations()
+        // }
+
+        // ADDED: Proactively prompt user if optimizations are enabled
+        promptToDisableBatteryOptimizations()
+
+        updateUi()
+        Log.d(TAG, "Initial UI setup complete. Service running: ${KeepScreenOnService.isServiceRunning}")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The service state might have changed while the app was in the background.
+        updateUi()
+    }
+
+    private fun checkPermissionsAndToggleService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED -> {
+                    toggleKeepScreenOnService()
+                }
+                else -> {
                     requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
-            } else {
-                Log.d(TAG, "API < 33, no POST_NOTIFICATIONS permission needed.")
-                checkAndToggleService()
+            }
+        } else {
+            toggleKeepScreenOnService()
+        }
+    }
+
+    // --- ADDED: Method to handle battery optimization prompt ---
+    // This is crucial for Samsung, OnePlus, etc.
+    private fun promptToDisableBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val packageName = packageName
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                AlertDialog.Builder(this)
+                    .setTitle("Battery Optimization")
+                    .setMessage("To ensure the app works correctly, please disable battery optimizations. This is required for the screen to stay on reliably.")
+                    .setPositiveButton("Go to Settings") { _, _ ->
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        intent.data = Uri.parse("package:$packageName")
+                        startActivity(intent)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
             }
         }
+    }
+
+
+    private fun toggleKeepScreenOnService() {
+        val serviceIntent = Intent(this, KeepScreenOnService::class.java)
+        // --- CHANGE: Use the reliable static variable ---
+        if (KeepScreenOnService.isServiceRunning) {
+            serviceIntent.action = KeepScreenOnService.ACTION_STOP_FOREGROUND_SERVICE
+            startService(serviceIntent) // Use startService for both start and stop actions
+            Log.d(TAG, "Attempting to stop service.")
+        } else {
+            serviceIntent.action = KeepScreenOnService.ACTION_START_FOREGROUND_SERVICE
+            ContextCompat.startForegroundService(this, serviceIntent)
+            Log.d(TAG, "Attempting to start foreground service.")
+        }
+    }
+
+    private fun updateUi() {
+        // --- CHANGE: Use the reliable static variable ---
+        val isRunning = KeepScreenOnService.isServiceRunning
+        val statusText = if (isRunning) "Status: Activated" else "Status: Deactivated"
+        val iconResource = if (isRunning) R.drawable.ic_lightbulb_fill else R.drawable.ic_lightbulb_outline
+
+        Log.d(TAG, "Updating UI. Service running: $isRunning")
+
+        toggleButton.setImageResource(iconResource)
+        statusTextView.text = statusText
     }
 
     private fun setupAutoOffDurationSpinner() {
@@ -112,125 +171,47 @@ class MainActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         autoOffDurationSpinner.adapter = adapter
 
-        // Load saved preference and set spinner selection
         val savedDuration = sharedPrefs.getInt(KeepScreenOnService.KEY_AUTO_OFF_DURATION, KeepScreenOnService.DEFAULT_AUTO_OFF_MINUTES)
         val savedDurationString = if (savedDuration == 0) "Never" else "$savedDuration minutes"
-        val selectionIndex = durationsArray.indexOf(savedDurationString)
-        if (selectionIndex != -1) {
-            autoOffDurationSpinner.setSelection(selectionIndex)
-        } else {
-            // Fallback to default if saved value is not in array (e.g., old value or direct edit)
-            val defaultIndex = durationsArray.indexOf("${KeepScreenOnService.DEFAULT_AUTO_OFF_MINUTES} minutes")
-            if (defaultIndex != -1) {
-                autoOffDurationSpinner.setSelection(defaultIndex)
-            }
-        }
-
+        val selectionIndex = durationsArray.indexOf(savedDurationString).takeIf { it != -1 } ?: 0
+        autoOffDurationSpinner.setSelection(selectionIndex)
 
         autoOffDurationSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: android.view.View?, position: Int, id: Long) {
+            override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
                 val selectedItem = parent.getItemAtPosition(position).toString()
                 val selectedMinutes = when (selectedItem) {
                     "Never" -> 0
-                    else -> selectedItem.replace(" minutes", "").toIntOrNull() ?: KeepScreenOnService.DEFAULT_AUTO_OFF_MINUTES
+                    else -> selectedItem.removeSuffix(" minutes").toIntOrNull() ?: KeepScreenOnService.DEFAULT_AUTO_OFF_MINUTES
                 }
 
-                Log.d(TAG, "Selected auto-off duration: $selectedMinutes minutes")
-
-                // Save the new preference
                 sharedPrefs.edit().putInt(KeepScreenOnService.KEY_AUTO_OFF_DURATION, selectedMinutes).apply()
 
-                // If service is running, stop and restart it to apply new duration
-                if (isServiceRunning) {
-                    Log.d(TAG, "Service is running, restarting to apply new auto-off duration.")
-                    val serviceIntent = Intent(this@MainActivity, KeepScreenOnService::class.java)
-                    serviceIntent.action = KeepScreenOnService.ACTION_STOP_FOREGROUND_SERVICE
-                    stopService(serviceIntent)
-                    // Small delay before starting again to ensure stop is processed
+                if (KeepScreenOnService.isServiceRunning) {
+                    Log.d(TAG, "Restarting service to apply new duration.")
+                    // Stop the service
+                    val stopIntent = Intent(this@MainActivity, KeepScreenOnService::class.java).apply {
+                        action = KeepScreenOnService.ACTION_STOP_FOREGROUND_SERVICE
+                    }
+                    startService(stopIntent)
+
+                    // Restart it after a short delay
                     Handler(Looper.getMainLooper()).postDelayed({
-                        serviceIntent.action = KeepScreenOnService.ACTION_START_FOREGROUND_SERVICE
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            ContextCompat.startForegroundService(this@MainActivity, serviceIntent)
-                        } else {
-                            startService(serviceIntent)
+                        val startIntent = Intent(this@MainActivity, KeepScreenOnService::class.java).apply {
+                            action = KeepScreenOnService.ACTION_START_FOREGROUND_SERVICE
                         }
-                        Log.d(TAG, "Service restarted with new auto-off duration.")
-                    }, 500) // 500ms delay
+                        ContextCompat.startForegroundService(this@MainActivity, startIntent)
+                    }, 200)
                 }
             }
-
-            override fun onNothingSelected(parent: AdapterView<*>) {
-                // Do nothing
-            }
+            override fun onNothingSelected(parent: AdapterView<*>) {}
         }
-    }
-
-    private fun checkAndToggleService() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE) == PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "FOREGROUND_SERVICE_SPECIAL_USE permission granted.")
-                toggleKeepScreenOnService()
-            } else {
-                Log.e(TAG, "FOREGROUND_SERVICE_SPECIAL_USE permission NOT granted. Cannot start service. This is highly unusual.")
-            }
-        } else {
-            toggleKeepScreenOnService()
-        }
-    }
-
-    private fun toggleKeepScreenOnService() {
-        val serviceIntent = Intent(this, KeepScreenOnService::class.java)
-        if (isServiceRunning) {
-            serviceIntent.action = KeepScreenOnService.ACTION_STOP_FOREGROUND_SERVICE
-            stopService(serviceIntent)
-            Log.d(TAG, "Attempting to stop service.")
-        } else {
-            serviceIntent.action = KeepScreenOnService.ACTION_START_FOREGROUND_SERVICE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ContextCompat.startForegroundService(this, serviceIntent)
-                Log.d(TAG, "Attempting to start foreground service (API >= O) using ContextCompat.")
-            } else {
-                startService(serviceIntent)
-            }
-        }
-    }
-
-    private fun updateUi() {
-        val statusText = if (isServiceRunning) "Status: Activated" else "Status: Deactivated"
-
-        Log.d(TAG, "updateUi called. isServiceRunning: $isServiceRunning, Setting status text to: '$statusText'")
-
-        // Update the ImageButton's source based on service status
-        val iconResource = if (isServiceRunning) R.drawable.ic_lightbulb_fill else R.drawable.ic_lightbulb_outline
-        toggleButton.setImageResource(iconResource)
-        toggleButton.contentDescription = if (isServiceRunning) "Turn Off Keep Screen On" else "Turn On Keep Screen On" // For accessibility
-
-        statusTextView.text = statusText
-        Log.d(TAG, "UI elements updated.")
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        Log.d(TAG, "onNewIntent called.")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(serviceStatusReceiver)
-        Log.d(TAG, "BroadcastReceiver unregistered. MainActivity onDestroy.")
+        Log.d(TAG, "MainActivity onDestroy.")
     }
 
-    @Suppress("DEPRECATION")
-    private fun isServiceRunning(context: Context, serviceClass: Class<*>): Boolean {
-        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-        for (service in manager.getRunningServices(Integer.MAX_VALUE)) {
-            if (serviceClass.name == service.service.className) {
-                Log.d(TAG, "Service ${serviceClass.simpleName} is running.")
-                return true
-            }
-        }
-        Log.d(TAG, "Service ${serviceClass.simpleName} is NOT running.")
-        return false
-    }
+    // --- REMOVED: The old, unreliable isServiceRunning method is no longer needed. ---
 }
