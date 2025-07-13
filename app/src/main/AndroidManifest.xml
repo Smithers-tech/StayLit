@@ -7,12 +7,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Permission for Quick Settings Tile -->
     <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE"
         tools:ignore="ProtectedPermissions" />
-
-    <!-- ADDED: Permission to request ignoring battery optimizations. This is key for devices like Samsung. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!--
+      FIX: Added SCHEDULE_EXACT_ALARM permission.
+      On many devices, especially Samsung, having this permission is a strong signal
+      to the OS that the app performs critical background tasks, making it eligible
+      to be added to the "Never sleeping apps" list.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
 
     <application

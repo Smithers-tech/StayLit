@@ -1,15 +1,47 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Stay Lit</string>
-    <string name="special_use_foreground_service_description">This app uses a foreground service to keep your device screen on continuously, preventing it from dimming or locking while the app is active. This is its primary purpose.</string>
-    <string name="app_widget_description">A widget to toggle the screen on/off service.</string>
-    <string name="tile_label">Stay Lit</string>
-    <string name="auto_off_duration_label">Auto-off after:</string> <!-- ADDED -->
-    <string-array name="auto_off_durations_array"> <!-- ADDED -->
-        <item>10 minutes</item>
-        <item>20 minutes</item>
+    <string name="app_name">StayLit</string>
+
+    <!-- Main Screen -->
+    <string name="status_activated">Activated</string>
+    <string name="status_deactivated">Deactivated</string>
+    <string name="status_activated_sub">Screen will stay on</string>
+    <string name="status_deactivated_sub">Screen will turn off normally</string>
+    <string name="action_activate">Activate</string>
+    <string name="action_deactivate">Deactivate</string>
+    <string name="status_icon_desc">Icon showing if the service is active</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="auto_off_duration_label">Auto-off after</string>
+    <string name="battery_optimization_title">App Battery Settings</string>
+
+    <!-- How to use -->
+    <string name="how_to_use_title">How to Use</string>
+    <string name="how_to_use_desc">• Activate to keep the screen on.\n• The service will run in the background with a notification.\n• Use the Quick Settings tile or home screen widget for fast access.</string>
+
+    <!-- Battery Optimization Dialog -->
+    <string name="battery_dialog_title">Important Notice</string>
+    <string name="battery_dialog_message">To work reliably, this app needs to be excluded from battery optimizations. This prevents the system from stopping the service unexpectedly.</string>
+    <string name="battery_dialog_positive_button">Go to Settings</string>
+    <string name="battery_dialog_negative_button">Cancel</string>
+
+    <!-- FIX: Added Troubleshooting Strings -->
+    <string name="troubleshooting_title">Troubleshooting (Samsung)</string>
+    <string name="troubleshooting_desc_samsung">If the screen still turns off, you may need to add this app to the "Never sleeping apps" list.\n\n1. Go to Device Settings > Battery and device care > Battery > Background usage limits.\n2. Tap on "Never sleeping apps".\n3. Tap the \'+\' icon and add StayLit to the list.</string>
+
+
+    <!-- Quick Tile -->
+    <string name="tile_label">StayLit</string>
+
+    <!-- App Widget Description -->
+    <string name="app_widget_description">A simple widget to toggle StayLit on and off.</string>
+
+    <!-- Durations Array -->
+    <string-array name="auto_off_durations_array">
+        <item>15 minutes</item>
         <item>30 minutes</item>
-        <item>60 minutes</item>
+        <item>1 hour</item>
+        <item>2 hours</item>
         <item>Never</item>
     </string-array>
 </resources>

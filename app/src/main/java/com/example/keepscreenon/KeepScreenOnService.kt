@@ -31,10 +31,6 @@ class KeepScreenOnService : Service() {
 
     private val PREFS_NAME = "KeepScreenOnPrefs"
 
-    // --- MAJOR CHANGE: SINGLE SOURCE OF TRUTH ---
-    // This companion object holds the state of the service.
-    // Any part of the app can check `KeepScreenOnService.isServiceRunning`
-    // to get a reliable status, instead of using the deprecated getRunningServices().
     companion object {
         const val ACTION_START_FOREGROUND_SERVICE = "com.example.keepscreenon.action.START_FOREGROUND_SERVICE"
         const val ACTION_STOP_FOREGROUND_SERVICE = "com.example.keepscreenon.action.STOP_FOREGROUND_SERVICE"
@@ -45,7 +41,7 @@ class KeepScreenOnService : Service() {
 
         @Volatile
         var isServiceRunning = false
-            private set // Only this class can change the value
+            private set
     }
 
     override fun onCreate() {
@@ -55,8 +51,19 @@ class KeepScreenOnService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand with action: ${intent?.action}")
-        when (intent?.action) {
+        val action = intent?.action
+        Log.d(TAG, "onStartCommand with action: $action, flags: $flags")
+
+        // *** THE DEFINITIVE FIX FOR SAMSUNG DEVICES ***
+        // If the intent is null, it means the service was killed and restarted by the OS.
+        // We check our static flag to see if it *should* have been running.
+        if (action == null && isServiceRunning) {
+            Log.w(TAG, "Service was killed and restarted by the system. Re-initializing service...")
+            startService() // Re-run the start logic to acquire the WakeLock again.
+            return START_STICKY
+        }
+
+        when (action) {
             ACTION_START_FOREGROUND_SERVICE -> startService()
             ACTION_STOP_FOREGROUND_SERVICE -> stopService()
         }
@@ -64,12 +71,11 @@ class KeepScreenOnService : Service() {
     }
 
     private fun startService() {
-        if (isServiceRunning) {
-            Log.d(TAG, "Service is already running. Ignoring start command.")
+        if (isServiceRunning && wakeLock?.isHeld == true) {
+            Log.d(TAG, "Service is already running with WakeLock held. Ignoring start command.")
             return
         }
         Log.d(TAG, "Starting KeepScreenOnService.")
-        // --- CHANGE: Set the state to true ---
         isServiceRunning = true
 
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -84,11 +90,11 @@ class KeepScreenOnService : Service() {
         val autoOffMinutes = sharedPrefs.getInt(KEY_AUTO_OFF_DURATION, DEFAULT_AUTO_OFF_MINUTES)
         val autoOffDelayMillis = if (autoOffMinutes == 0) 0L else autoOffMinutes * 60 * 1000L
 
+        handler.removeCallbacks(autoOffRunnable) // Remove any old timers
         if (autoOffDelayMillis > 0) {
             handler.postDelayed(autoOffRunnable, autoOffDelayMillis)
             Log.d(TAG, "Auto-off scheduled for $autoOffMinutes minutes.")
         } else {
-            handler.removeCallbacks(autoOffRunnable)
             Log.d(TAG, "Auto-off is set to Never.")
         }
 
@@ -106,7 +112,6 @@ class KeepScreenOnService : Service() {
 
     private fun stopService() {
         Log.d(TAG, "Stopping KeepScreenOnService.")
-        // --- CHANGE: Set the state to false ---
         isServiceRunning = false
 
         handler.removeCallbacks(autoOffRunnable)
@@ -128,14 +133,17 @@ class KeepScreenOnService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "KeepScreenOnService onDestroy called.")
-        // --- CHANGE: Ensure state is false on destruction ---
-        isServiceRunning = false
+        // This is a final safeguard. If the service is destroyed for any reason,
+        // ensure the state is correct.
+        if (isServiceRunning) {
+            isServiceRunning = false
+            broadcastServiceStatus(false)
+        }
         handler.removeCallbacks(autoOffRunnable)
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
         }
         wakeLock = null
-        broadcastServiceStatus(false)
     }
 
     private fun buildNotification(title: String, content: String): NotificationCompat.Builder {
@@ -162,7 +170,7 @@ class KeepScreenOnService : Service() {
             .addAction(R.drawable.ic_lightbulb_outline, "Turn Off", stopPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationManager.IMPORTANCE_HIGH)
+            .setPriority(NotificationManager.IMPORTANCE_DEFAULT)
     }
 
     private fun broadcastServiceStatus(isActive: Boolean) {

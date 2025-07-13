@@ -1,4 +1,4 @@
-package com.example.keepscreenon // IMPORTANT: Ensure this package name matches your project's actual package name!
+package com.example.keepscreenon
 
 import android.app.Application
 import android.app.NotificationChannel
@@ -13,22 +13,24 @@ class KeepScreenOnApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "KeepScreenOnApplication onCreate called. Creating notification channel.")
+        Log.d(TAG, "KeepScreenOnApplication onCreate called.")
         createNotificationChannel()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // FIX: Changed importance from IMPORTANCE_LOW to IMPORTANCE_DEFAULT.
+            // A higher importance makes it less likely for the OS to interfere with the foreground service.
             val serviceChannel = NotificationChannel(
                 NOTIFICATION_CHANNEL_ID,
-                "Keep Screen On Service Channel",
-                NotificationManager.IMPORTANCE_LOW
+                "StayLit Service Channel",
+                NotificationManager.IMPORTANCE_DEFAULT // This was IMPORTANCE_LOW
             )
+            serviceChannel.description = "Channel for the persistent StayLit notification"
+
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
-            Log.d(TAG, "Notification channel '$NOTIFICATION_CHANNEL_ID' created.")
-        } else {
-            Log.d(TAG, "Notification channels not needed for API < O.")
+            Log.d(TAG, "Notification channel '$NOTIFICATION_CHANNEL_ID' created with DEFAULT importance.")
         }
     }
 }
