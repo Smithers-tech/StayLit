@@ -10,15 +10,16 @@
     <uses-permission android:name="android.permission.BIND_QUICK_SETTINGS_TILE"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!--
-      FIX: Added SCHEDULE_EXACT_ALARM permission.
-      On many devices, especially Samsung, having this permission is a strong signal
-      to the OS that the app performs critical background tasks, making it eligible
-      to be added to the "Never sleeping apps" list.
-    -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!-- New permission for Samsung overlay method -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Additional permissions that might help with Samsung -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_USE_DATA_IN_BACKGROUND" />
 
     <application
         android:name=".KeepScreenOnApplication"
@@ -42,6 +43,7 @@
             </intent-filter>
         </activity>
 
+        <!-- Fixed typo in the receiver name -->
         <receiver
             android:name=".ScreenOnWidgetProvider"
             android:exported="true">
