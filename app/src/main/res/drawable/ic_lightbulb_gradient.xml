@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Circular gradient background -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="50%"
+                android:centerX="0.3"
+                android:centerY="0.3"
+                android:startColor="#764BA2"
+                android:endColor="#667EEA" />
+            <size
+                android:width="24dp"
+                android:height="24dp" />
+        </shape>
+    </item>
+
+    <!-- Foreground bulb icon with padding -->
+    <item
+        android:drawable="@drawable/ic_bulb_foreground"
+        android:top="2dp"
+        android:bottom="2dp"
+        android:left="2dp"
+        android:right="2dp" />
+
+</layer-list>

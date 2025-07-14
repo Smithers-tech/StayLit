@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Outer glow -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.2"
+        android:pathData="M12,10 m-6,0 a6,6 0 1,1 12,0 a6,6 0 1,1 -12,0" />
+
+    <!-- Sleek bulb shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,4C9,4 7,6.5 7,9.5c0,2 1,3.5 2.5,4.3
+                          c0.3,0.2 0.5,0.5 0.5,0.9V16
+                          c0,0.5 0.5,1 1,1h2c0.5,0 1,-0.5 1,-1v-1.3
+                          c0,-0.4 0.2,-0.7 0.5,-0.9C16,12.5 17,11 17,9.5
+                          c0,-3 -2,-5.5 -5,-5.5z" />
+
+    <!-- Simple power indicator -->
+    <path
+        android:strokeColor="#667EEA"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M12,7 L12,11" />
+
+    <!-- Base -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:pathData="M10.5,17h3v1c0,0.3 -0.2,0.5 -0.5,0.5h-2c-0.3,0 -0.5,-0.2 -0.5,-0.5v-1z" />
+</vector>
