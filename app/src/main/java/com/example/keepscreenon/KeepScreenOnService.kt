@@ -1,5 +1,6 @@
 package com.example.keepscreenon
 
+import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -7,18 +8,26 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
+import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 class KeepScreenOnService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var overlayView: View? = null
+    private var windowManager: WindowManager? = null
     private lateinit var NOTIFICATION_CHANNEL_ID: String
     private val NOTIFICATION_ID = 101
     private val TAG = "KeepScreenOnService"
@@ -27,6 +36,16 @@ class KeepScreenOnService : Service() {
     private val autoOffRunnable = Runnable {
         Log.d(TAG, "Auto-off timer expired. Stopping service.")
         stopService()
+    }
+
+    // Aggressive poke every 10 seconds to prevent dimming
+    private val aggressivePokeRunnable = object : Runnable {
+        override fun run() {
+            if (isServiceRunning) {
+                simulateUserActivity()
+                handler.postDelayed(this, 10000) // Every 10 seconds
+            }
+        }
     }
 
     private val PREFS_NAME = "KeepScreenOnPrefs"
@@ -47,58 +66,186 @@ class KeepScreenOnService : Service() {
     override fun onCreate() {
         super.onCreate()
         NOTIFICATION_CHANNEL_ID = (application as KeepScreenOnApplication).NOTIFICATION_CHANNEL_ID
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
         Log.d(TAG, "KeepScreenOnService onCreate called.")
+        Log.d(TAG, "Device: ${Build.MANUFACTURER} ${Build.MODEL}")
+        Log.d(TAG, "Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
-        Log.d(TAG, "onStartCommand with action: $action, flags: $flags")
-
-        // *** THE DEFINITIVE FIX FOR SAMSUNG DEVICES ***
-        // If the intent is null, it means the service was killed and restarted by the OS.
-        // We check our static flag to see if it *should* have been running.
-        if (action == null && isServiceRunning) {
-            Log.w(TAG, "Service was killed and restarted by the system. Re-initializing service...")
-            startService() // Re-run the start logic to acquire the WakeLock again.
-            return START_STICKY
-        }
+        Log.d(TAG, "onStartCommand with action: $action")
 
         when (action) {
             ACTION_START_FOREGROUND_SERVICE -> startService()
             ACTION_STOP_FOREGROUND_SERVICE -> stopService()
+            null -> {
+                if (isServiceRunning) {
+                    Log.w(TAG, "Service restarted by system. Re-initializing...")
+                    startService()
+                }
+            }
         }
         return START_STICKY
     }
 
     private fun startService() {
-        if (isServiceRunning && wakeLock?.isHeld == true) {
-            Log.d(TAG, "Service is already running with WakeLock held. Ignoring start command.")
+        if (isServiceRunning) {
+            Log.d(TAG, "Service already running.")
             return
         }
+
         Log.d(TAG, "Starting KeepScreenOnService.")
         isServiceRunning = true
 
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "StayLitApp::MyWakeLockTag"
-        )
-        wakeLock?.acquire()
-        Log.d(TAG, "WakeLock acquired.")
+        val isSamsung = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
 
+        if (isSamsung) {
+            // Samsung device - no toast message needed
+
+            // Method 1: Overlay with FLAG_KEEP_SCREEN_ON
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+                createPersistentOverlay()
+            }
+
+            // Method 2: Bright wake lock
+            acquireBrightWakeLock()
+
+            // Method 3: Start aggressive user activity simulation
+            handler.post(aggressivePokeRunnable)
+
+        } else {
+            Log.d(TAG, "Non-Samsung device. Using standard wake lock.")
+            acquireBrightWakeLock()
+        }
+
+        setupAutoOff()
+        startForegroundNotification()
+        broadcastServiceStatus(true)
+
+        // Send activity flag broadcast
+        sendActivityFlagBroadcast(true)
+    }
+
+    private fun createPersistentOverlay() {
+        if (overlayView != null) {
+            Log.d(TAG, "Overlay already exists")
+            return
+        }
+
+        try {
+            // Create a minimal overlay that won't interfere with user
+            overlayView = View(this).apply {
+                // Make it truly invisible
+                alpha = 0f
+                visibility = View.VISIBLE // Must be VISIBLE for FLAG_KEEP_SCREEN_ON to work
+                keepScreenOn = true
+            }
+
+            val params = WindowManager.LayoutParams().apply {
+                width = 1
+                height = 1
+                type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+                }
+                flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+                format = PixelFormat.TRANSLUCENT
+                gravity = Gravity.TOP or Gravity.START
+                x = 0
+                y = 0
+                // Don't set any brightness values - let system handle it
+            }
+
+            windowManager?.addView(overlayView, params)
+            Log.d(TAG, "Persistent overlay created successfully")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create overlay", e)
+        }
+    }
+
+    private fun acquireBrightWakeLock() {
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ON_AFTER_RELEASE,
+                "StayLitApp::BrightLock"
+            )
+
+            wakeLock?.setReferenceCounted(false)
+            wakeLock?.acquire(10 * 60 * 60 * 1000L) // 10 hours
+
+            Log.d(TAG, "Bright wake lock acquired")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire wake lock", e)
+        }
+    }
+
+    private fun simulateUserActivity() {
+        try {
+            // Method 1: Update overlay to trigger screen activity
+            overlayView?.let { view ->
+                // Toggle visibility to trigger window update
+                view.visibility = View.INVISIBLE
+                view.postDelayed({
+                    view.visibility = View.VISIBLE
+                }, 50)
+            }
+
+            // Method 2: Refresh wake lock
+            wakeLock?.let {
+                if (it.isHeld) {
+                    // Don't release/reacquire, just ensure it's held
+                    Log.d(TAG, "Wake lock active")
+                }
+            }
+
+            // Method 3: Send keep-alive broadcast
+            val intent = Intent("com.example.keepscreenon.KEEP_ALIVE")
+            sendBroadcast(intent)
+
+            Log.d(TAG, "User activity simulated")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error simulating activity", e)
+        }
+    }
+
+    private fun sendActivityFlagBroadcast(enable: Boolean) {
+        val intent = Intent("com.example.keepscreenon.SET_SCREEN_ON_FLAG")
+        intent.putExtra("enable", enable)
+        sendBroadcast(intent)
+        Log.d(TAG, "Activity flag broadcast sent: $enable")
+    }
+
+    private fun showToast(message: String) {
+        handler.post {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun setupAutoOff() {
         val sharedPrefs: SharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val autoOffMinutes = sharedPrefs.getInt(KEY_AUTO_OFF_DURATION, DEFAULT_AUTO_OFF_MINUTES)
         val autoOffDelayMillis = if (autoOffMinutes == 0) 0L else autoOffMinutes * 60 * 1000L
 
-        handler.removeCallbacks(autoOffRunnable) // Remove any old timers
+        handler.removeCallbacks(autoOffRunnable)
         if (autoOffDelayMillis > 0) {
             handler.postDelayed(autoOffRunnable, autoOffDelayMillis)
             Log.d(TAG, "Auto-off scheduled for $autoOffMinutes minutes.")
-        } else {
-            Log.d(TAG, "Auto-off is set to Never.")
         }
+    }
 
-        val notification = buildNotification("Screen On", "The screen will stay on.").build()
+    private fun startForegroundNotification() {
+        val notification = buildNotification("Screen On", "Keeping your screen awake").build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -106,44 +253,61 @@ class KeepScreenOnService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
         Log.d(TAG, "Foreground service started.")
-
-        broadcastServiceStatus(true)
     }
 
     private fun stopService() {
         Log.d(TAG, "Stopping KeepScreenOnService.")
         isServiceRunning = false
 
-        handler.removeCallbacks(autoOffRunnable)
-        Log.d(TAG, "Removed auto-off callbacks.")
+        handler.removeCallbacksAndMessages(null)
+        sendActivityFlagBroadcast(false)
 
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
-            Log.d(TAG, "WakeLock released.")
+        overlayView?.let {
+            try {
+                windowManager?.removeView(it)
+                Log.d(TAG, "Overlay removed.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing overlay", e)
+            }
+            overlayView = null
+        }
+
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.d(TAG, "Wake lock released.")
+            }
         }
         wakeLock = null
 
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
-        Log.d(TAG, "Foreground service stopped.")
 
         broadcastServiceStatus(false)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "KeepScreenOnService onDestroy called.")
-        // This is a final safeguard. If the service is destroyed for any reason,
-        // ensure the state is correct.
+        Log.d(TAG, "onDestroy called.")
+
         if (isServiceRunning) {
             isServiceRunning = false
             broadcastServiceStatus(false)
         }
-        handler.removeCallbacks(autoOffRunnable)
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
+
+        handler.removeCallbacksAndMessages(null)
+
+        overlayView?.let {
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing overlay in onDestroy", e)
+            }
         }
-        wakeLock = null
+
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
     }
 
     private fun buildNotification(title: String, content: String): NotificationCompat.Builder {
@@ -170,7 +334,8 @@ class KeepScreenOnService : Service() {
             .addAction(R.drawable.ic_lightbulb_outline, "Turn Off", stopPendingIntent)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationManager.IMPORTANCE_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
     }
 
     private fun broadcastServiceStatus(isActive: Boolean) {
@@ -178,7 +343,7 @@ class KeepScreenOnService : Service() {
             putExtra(EXTRA_IS_ACTIVE, isActive)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(statusIntent)
-        Log.d(TAG, "Broadcasted service status: $isActive")
+        Log.d(TAG, "Service status broadcast: $isActive")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

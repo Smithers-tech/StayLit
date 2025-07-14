@@ -15,6 +15,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.Button
@@ -39,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sharedPrefs: SharedPreferences
 
     private val TAG = "MainActivity"
+    private val OVERLAY_PERMISSION_REQUEST_CODE = 1234
 
     private val serviceStatusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -49,12 +51,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Receiver for window flag requests
+    private val screenFlagReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.example.keepscreenon.SET_SCREEN_ON_FLAG") {
+                val enable = intent.getBooleanExtra("enable", false)
+                Log.d(TAG, "Received screen flag request: $enable")
+                setScreenOnFlag(enable)
+            }
+        }
+    }
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
             Log.d(TAG, "Notification permission granted.")
-            toggleKeepScreenOnService()
+            checkPermissionsAndToggleService()
         } else {
             Log.d(TAG, "Notification permission denied.")
         }
@@ -74,18 +87,76 @@ class MainActivity : AppCompatActivity() {
 
         sharedPrefs = getSharedPreferences("KeepScreenOnPrefs", Context.MODE_PRIVATE)
 
-        // Register receiver
+        // Register receivers
         val filter = IntentFilter(KeepScreenOnService.ACTION_SERVICE_STATUS_UPDATE)
         LocalBroadcastManager.getInstance(this).registerReceiver(serviceStatusReceiver, filter)
 
+        val screenFlagFilter = IntentFilter("com.example.keepscreenon.SET_SCREEN_ON_FLAG")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenFlagReceiver, screenFlagFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(screenFlagReceiver, screenFlagFilter)
+        }
+
         setupListeners()
         setupAutoOffDurationSpinner()
+
+        // Check if Samsung device needs overlay permission
+        if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
+            checkOverlayPermission()
+        }
+
+        // Optionally prompt for battery optimization (though not required)
         promptToDisableBatteryOptimizations()
     }
 
     override fun onResume() {
         super.onResume()
         updateUi()
+
+        // If service is running, also set the window flag
+        if (KeepScreenOnService.isServiceRunning) {
+            setScreenOnFlag(true)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == OVERLAY_PERMISSION_REQUEST_CODE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Permission granted! You can now use StayLit.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Overlay permission is required for StayLit to work properly", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun setScreenOnFlag(enable: Boolean) {
+        if (enable) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            Log.d(TAG, "Added FLAG_KEEP_SCREEN_ON to window")
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            Log.d(TAG, "Removed FLAG_KEEP_SCREEN_ON from window")
+        }
+    }
+
+    private fun checkOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Permission Required")
+                .setMessage("StayLit needs \"Display over other apps\" permission to keep your screen on while using other apps.")
+                .setPositiveButton("Grant Permission") { _, _ ->
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE)
+                }
+                .setNegativeButton("Later", null)
+                .setCancelable(false)
+                .show()
+        }
     }
 
     private fun setupListeners() {
@@ -93,43 +164,63 @@ class MainActivity : AppCompatActivity() {
             checkPermissionsAndToggleService()
         }
 
-        // *** FIX: This listener now uses a more reliable intent to open the app's detail settings page. ***
-        // From this page, the user can always access the battery settings.
         batteryOptimizationsButton.setOnClickListener {
-            Log.d(TAG, "Battery Optimizations button clicked. Opening app details settings.")
-            try {
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                intent.data = Uri.parse("package:$packageName")
-                startActivity(intent)
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not open app settings", e)
-                Toast.makeText(this, "Could not open app settings.", Toast.LENGTH_SHORT).show()
-            }
+            openBatteryOptimizationSettings()
+        }
+    }
+
+    private fun openBatteryOptimizationSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+            intent.data = Uri.parse("package:$packageName")
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Fallback to app settings
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = Uri.parse("package:$packageName")
+            startActivity(intent)
         }
     }
 
     private fun checkPermissionsAndToggleService() {
+        // Check notification permission first
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 return
             }
         }
-        toggleKeepScreenOnService()
+
+        // For Samsung devices, check overlay permission
+        val isSamsung = Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+        if (isSamsung && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Permission Required")
+                .setMessage("Please grant \"Display over other apps\" permission for StayLit to work properly.")
+                .setPositiveButton("Grant Permission") { _, _ ->
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                    startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        } else {
+            toggleKeepScreenOnService()
+        }
     }
 
     private fun promptToDisableBatteryOptimizations() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
             MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.battery_dialog_title)
-                .setMessage(R.string.battery_dialog_message)
-                .setPositiveButton(R.string.battery_dialog_positive_button) { _, _ ->
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                    intent.data = Uri.parse("package:$packageName")
-                    startActivity(intent)
+                .setTitle("Optional: Battery Optimization")
+                .setMessage("For best results, you can disable battery optimization for StayLit. This is optional as the app works well even with optimization enabled.")
+                .setPositiveButton("Disable") { _, _ ->
+                    openBatteryOptimizationSettings()
                 }
-                .setNegativeButton(R.string.battery_dialog_negative_button, null)
+                .setNegativeButton("Skip", null)
                 .show()
         }
     }
@@ -139,9 +230,11 @@ class MainActivity : AppCompatActivity() {
         if (KeepScreenOnService.isServiceRunning) {
             serviceIntent.action = KeepScreenOnService.ACTION_STOP_FOREGROUND_SERVICE
             startService(serviceIntent)
+            setScreenOnFlag(false)
         } else {
             serviceIntent.action = KeepScreenOnService.ACTION_START_FOREGROUND_SERVICE
             ContextCompat.startForegroundService(this, serviceIntent)
+            setScreenOnFlag(true)
         }
     }
 
@@ -205,5 +298,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(serviceStatusReceiver)
+        unregisterReceiver(screenFlagReceiver)
     }
 }
