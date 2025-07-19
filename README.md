@@ -28,4 +28,4 @@ A lightweight Android app that prevents your device's screen from turning off au
 
 ## Installation
 
-Download the latest APK from the [Releases](link-to-releases) page
+Download the latest APK from the [Releases](app/release) page
