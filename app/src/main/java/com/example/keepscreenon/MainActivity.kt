@@ -15,10 +15,10 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
-import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -27,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class MainActivity : AppCompatActivity() {
@@ -36,8 +37,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusSubTextView: TextView
     private lateinit var toggleIcon: ImageView
     private lateinit var autoOffDurationSpinner: AutoCompleteTextView
-    private lateinit var batteryOptimizationsButton: MaterialButton
     private lateinit var sharedPrefs: SharedPreferences
+    private lateinit var samsungTroubleshootingCard: MaterialCardView
 
     private val TAG = "MainActivity"
     private val OVERLAY_PERMISSION_REQUEST_CODE = 1234
@@ -83,7 +84,7 @@ class MainActivity : AppCompatActivity() {
         statusSubTextView = findViewById(R.id.statusSubTextView)
         toggleIcon = findViewById(R.id.toggleIcon)
         autoOffDurationSpinner = findViewById(R.id.autoOffDurationSpinner)
-        batteryOptimizationsButton = findViewById(R.id.batteryOptimizationsButton)
+        samsungTroubleshootingCard = findViewById(R.id.samsungTroubleshootingCard)
 
         sharedPrefs = getSharedPreferences("KeepScreenOnPrefs", Context.MODE_PRIVATE)
 
@@ -101,13 +102,16 @@ class MainActivity : AppCompatActivity() {
         setupListeners()
         setupAutoOffDurationSpinner()
 
-        // Check if Samsung device needs overlay permission
+        // Show Samsung troubleshooting card if needed
         if (Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
+            samsungTroubleshootingCard.visibility = View.VISIBLE
             checkOverlayPermission()
         }
 
-        // Optionally prompt for battery optimization (though not required)
-        promptToDisableBatteryOptimizations()
+        // Show battery optimization dialog on first launch only
+        if (isFirstLaunch()) {
+            promptToDisableBatteryOptimizations()
+        }
     }
 
     override fun onResume() {
@@ -163,23 +167,6 @@ class MainActivity : AppCompatActivity() {
         toggleButton.setOnClickListener {
             checkPermissionsAndToggleService()
         }
-
-        batteryOptimizationsButton.setOnClickListener {
-            openBatteryOptimizationSettings()
-        }
-    }
-
-    private fun openBatteryOptimizationSettings() {
-        try {
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            intent.data = Uri.parse("package:$packageName")
-            startActivity(intent)
-        } catch (e: Exception) {
-            // Fallback to app settings
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            intent.data = Uri.parse("package:$packageName")
-            startActivity(intent)
-        }
     }
 
     private fun checkPermissionsAndToggleService() {
@@ -211,16 +198,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun isFirstLaunch(): Boolean {
+        val isFirst = sharedPrefs.getBoolean("is_first_launch", true)
+        if (isFirst) {
+            sharedPrefs.edit().putBoolean("is_first_launch", false).apply()
+        }
+        return isFirst
+    }
+
     private fun promptToDisableBatteryOptimizations() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
             MaterialAlertDialogBuilder(this)
-                .setTitle("Optional: Battery Optimization")
-                .setMessage("For best results, you can disable battery optimization for StayLit. This is optional as the app works well even with optimization enabled.")
-                .setPositiveButton("Disable") { _, _ ->
-                    openBatteryOptimizationSettings()
+                .setTitle("Optimize Battery Usage")
+                .setMessage("For best results, you may want to exclude StayLit from battery optimization. This helps ensure the app works reliably in the background.\n\nYou can do this manually in Settings > Apps > StayLit > Battery.")
+                .setPositiveButton("OK") { dialog, _ ->
+                    dialog.dismiss()
                 }
-                .setNegativeButton("Skip", null)
                 .show()
         }
     }
