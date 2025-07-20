@@ -84,6 +84,9 @@ class KeepScreenOnService : Service() {
                 if (isServiceRunning) {
                     Log.w(TAG, "Service restarted by system. Re-initializing...")
                     startService()
+                } else {
+                    // Service was killed and restarted, but wasn't running
+                    stopSelf()
                 }
             }
         }
@@ -126,6 +129,9 @@ class KeepScreenOnService : Service() {
 
         // Send activity flag broadcast
         sendActivityFlagBroadcast(true)
+
+        // Force widget update
+        updateWidgets()
     }
 
     private fun createPersistentOverlay() {
@@ -226,12 +232,6 @@ class KeepScreenOnService : Service() {
         Log.d(TAG, "Activity flag broadcast sent: $enable")
     }
 
-    private fun showToast(message: String) {
-        handler.post {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        }
-    }
-
     private fun setupAutoOff() {
         val sharedPrefs: SharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val autoOffMinutes = sharedPrefs.getInt(KEY_AUTO_OFF_DURATION, DEFAULT_AUTO_OFF_MINUTES)
@@ -281,9 +281,13 @@ class KeepScreenOnService : Service() {
         wakeLock = null
 
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
 
         broadcastServiceStatus(false)
+
+        // Force widget update before stopping
+        updateWidgets()
+
+        stopSelf()
     }
 
     override fun onDestroy() {
@@ -293,6 +297,7 @@ class KeepScreenOnService : Service() {
         if (isServiceRunning) {
             isServiceRunning = false
             broadcastServiceStatus(false)
+            updateWidgets()
         }
 
         handler.removeCallbacksAndMessages(null)
@@ -341,9 +346,23 @@ class KeepScreenOnService : Service() {
     private fun broadcastServiceStatus(isActive: Boolean) {
         val statusIntent = Intent(ACTION_SERVICE_STATUS_UPDATE).apply {
             putExtra(EXTRA_IS_ACTIVE, isActive)
+            setPackage(packageName) // Ensure it's only for this app
         }
+
+        // Send local broadcast for MainActivity
         LocalBroadcastManager.getInstance(this).sendBroadcast(statusIntent)
-        Log.d(TAG, "Service status broadcast: $isActive")
+
+        // Send regular broadcast for widgets and tile service
+        sendBroadcast(statusIntent)
+
+        Log.d(TAG, "Service status broadcast sent: $isActive (both local and regular)")
+    }
+
+    private fun updateWidgets() {
+        // Force immediate widget update
+        handler.post {
+            ScreenOnWidgetProvider.updateAllWidgets(this)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
