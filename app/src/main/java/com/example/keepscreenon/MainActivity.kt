@@ -1,12 +1,14 @@
 package com.example.keepscreenon
 
 import android.Manifest
+import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -17,6 +19,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.OvershootInterpolator
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
 import android.widget.ImageView
@@ -28,6 +31,7 @@ import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class MainActivity : AppCompatActivity() {
@@ -39,6 +43,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var autoOffDurationSpinner: AutoCompleteTextView
     private lateinit var sharedPrefs: SharedPreferences
     private lateinit var samsungTroubleshootingCard: MaterialCardView
+    private lateinit var glowBackground: View
+    private lateinit var gradientBackground: View
+    private lateinit var widgetChip: Chip
+    private lateinit var tileChip: Chip
 
     private val TAG = "MainActivity"
     private val OVERLAY_PERMISSION_REQUEST_CODE = 1234
@@ -78,13 +86,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Initialize Views
-        toggleButton = findViewById(R.id.toggleScreenOnButton)
-        statusTextView = findViewById(R.id.statusTextView)
-        statusSubTextView = findViewById(R.id.statusSubTextView)
-        toggleIcon = findViewById(R.id.toggleIcon)
-        autoOffDurationSpinner = findViewById(R.id.autoOffDurationSpinner)
-        samsungTroubleshootingCard = findViewById(R.id.samsungTroubleshootingCard)
+        // Initialize all views
+        initializeViews()
 
         sharedPrefs = getSharedPreferences("KeepScreenOnPrefs", Context.MODE_PRIVATE)
 
@@ -111,6 +114,45 @@ class MainActivity : AppCompatActivity() {
         // Show battery optimization dialog on first launch only
         if (isFirstLaunch()) {
             promptToDisableBatteryOptimizations()
+        }
+    }
+
+    private fun initializeViews() {
+        // Existing views
+        toggleButton = findViewById(R.id.toggleScreenOnButton)
+        statusTextView = findViewById(R.id.statusTextView)
+        statusSubTextView = findViewById(R.id.statusSubTextView)
+        toggleIcon = findViewById(R.id.toggleIcon)
+        autoOffDurationSpinner = findViewById(R.id.autoOffDurationSpinner)
+        samsungTroubleshootingCard = findViewById(R.id.samsungTroubleshootingCard)
+
+        // New views
+        glowBackground = findViewById(R.id.glowBackground)
+        gradientBackground = findViewById(R.id.gradientBackground)
+        widgetChip = findViewById(R.id.widgetChip)
+        tileChip = findViewById(R.id.tileChip)
+
+        // Setup chip click listeners
+        setupChipListeners()
+    }
+
+    private fun setupChipListeners() {
+        widgetChip.setOnClickListener {
+            // Show instructions for adding widget
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Add Widget")
+                .setMessage("To add the StayLit widget:\n\n1. Long press on your home screen\n2. Select 'Widgets'\n3. Find and drag the StayLit widget to your home screen")
+                .setPositiveButton("Got it", null)
+                .show()
+        }
+
+        tileChip.setOnClickListener {
+            // Show instructions for quick settings tile
+            MaterialAlertDialogBuilder(this)
+                .setTitle("Quick Settings Tile")
+                .setMessage("To add the quick tile:\n\n1. Swipe down twice from the top\n2. Tap the pencil icon\n3. Find StayLit and drag it to your quick settings")
+                .setPositiveButton("Got it", null)
+                .show()
         }
     }
 
@@ -220,6 +262,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleKeepScreenOnService() {
+        // Add haptic feedback
+        toggleButton.performHapticFeedback(
+            android.view.HapticFeedbackConstants.VIRTUAL_KEY,
+            android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
+        )
+
         val serviceIntent = Intent(this, KeepScreenOnService::class.java)
         if (KeepScreenOnService.isServiceRunning) {
             serviceIntent.action = KeepScreenOnService.ACTION_STOP_FOREGROUND_SERVICE
@@ -237,16 +285,160 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "Updating UI. Service running: $isRunning")
 
         if (isRunning) {
-            statusTextView.text = getString(R.string.status_activated)
-            statusSubTextView.text = getString(R.string.status_activated_sub)
-            toggleButton.text = getString(R.string.action_deactivate)
-            toggleIcon.setImageResource(R.drawable.ic_lightbulb_on)
+            animateToActiveState()
         } else {
-            statusTextView.text = getString(R.string.status_deactivated)
-            statusSubTextView.text = getString(R.string.status_deactivated_sub)
-            toggleButton.text = getString(R.string.action_activate)
-            toggleIcon.setImageResource(R.drawable.ic_lightbulb_off)
+            animateToInactiveState()
         }
+    }
+
+    private fun animateToActiveState() {
+        // Update text
+        statusTextView.text = getString(R.string.status_activated)
+        statusSubTextView.text = getString(R.string.status_activated_sub)
+        toggleButton.text = getString(R.string.action_deactivate)
+
+        // Icon animation
+        toggleIcon.animate()
+            .scaleX(0.8f)
+            .scaleY(0.8f)
+            .setDuration(100)
+            .withEndAction {
+                toggleIcon.setImageResource(R.drawable.ic_lightbulb_on)
+                toggleIcon.imageTintList = ColorStateList.valueOf(
+                    ContextCompat.getColor(this, R.color.md_theme_light_primary)
+                )
+                toggleIcon.animate()
+                    .scaleX(1.2f)
+                    .scaleY(1.2f)
+                    .setDuration(300)
+                    .setInterpolator(OvershootInterpolator())
+                    .withEndAction {
+                        toggleIcon.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(200)
+                            .start()
+                    }
+                    .start()
+            }
+            .start()
+
+        // Show and animate glow
+        glowBackground.visibility = View.VISIBLE
+        glowBackground.alpha = 0f
+        glowBackground.animate()
+            .alpha(1f)
+            .setDuration(500)
+            .start()
+
+        // Pulse animation for glow
+        val pulseAnimator = ValueAnimator.ofFloat(0.8f, 1.2f).apply {
+            duration = 1500
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { animator ->
+                val scale = animator.animatedValue as Float
+                glowBackground.scaleX = scale
+                glowBackground.scaleY = scale
+            }
+        }
+        pulseAnimator.start()
+        glowBackground.tag = pulseAnimator
+
+        // Button state animation
+        animateButtonState(true)
+
+        // Gradient background animation
+        gradientBackground.animate()
+            .alpha(0.15f)
+            .setDuration(500)
+            .start()
+    }
+
+    private fun animateToInactiveState() {
+        // Update text
+        statusTextView.text = getString(R.string.status_deactivated)
+        statusSubTextView.text = getString(R.string.status_deactivated_sub)
+        toggleButton.text = getString(R.string.action_activate)
+
+        // Icon animation
+        toggleIcon.animate()
+            .scaleX(0.8f)
+            .scaleY(0.8f)
+            .setDuration(100)
+            .withEndAction {
+                toggleIcon.setImageResource(R.drawable.ic_lightbulb_off)
+                toggleIcon.imageTintList = ColorStateList.valueOf(
+                    ContextCompat.getColor(this, R.color.md_theme_light_onSurfaceVariant)
+                )
+                toggleIcon.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(300)
+                    .start()
+            }
+            .start()
+
+        // Hide glow with animation
+        (glowBackground.tag as? ValueAnimator)?.cancel()
+        glowBackground.animate()
+            .alpha(0f)
+            .setDuration(300)
+            .withEndAction {
+                glowBackground.visibility = View.INVISIBLE
+            }
+            .start()
+
+        // Button state animation
+        animateButtonState(false)
+
+        // Gradient background animation
+        gradientBackground.animate()
+            .alpha(0.1f)
+            .setDuration(500)
+            .start()
+    }
+
+    private fun animateButtonState(isActive: Boolean) {
+        if (isActive) {
+            // Change to outline style for deactivate
+            toggleButton.strokeWidth = 2
+            toggleButton.strokeColor = ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.md_theme_light_primary)
+            )
+            toggleButton.backgroundTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(this, android.R.color.transparent)
+            )
+            toggleButton.setTextColor(ContextCompat.getColor(this, R.color.md_theme_light_primary))
+            toggleButton.iconTint = ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.md_theme_light_primary)
+            )
+        } else {
+            // Change to filled style for activate
+            toggleButton.strokeWidth = 0
+            toggleButton.backgroundTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.md_theme_light_primary)
+            )
+            toggleButton.setTextColor(ContextCompat.getColor(this, R.color.md_theme_light_onPrimary))
+            toggleButton.iconTint = ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.md_theme_light_onPrimary)
+            )
+        }
+
+        // Subtle bounce animation
+        toggleButton.animate()
+            .scaleX(0.95f)
+            .scaleY(0.95f)
+            .setDuration(100)
+            .withEndAction {
+                toggleButton.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(200)
+                    .setInterpolator(OvershootInterpolator())
+                    .start()
+            }
+            .start()
     }
 
     private fun setupAutoOffDurationSpinner() {
@@ -291,6 +483,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+
+        // Cancel any running animations
+        (glowBackground.tag as? ValueAnimator)?.cancel()
+
         LocalBroadcastManager.getInstance(this).unregisterReceiver(serviceStatusReceiver)
         unregisterReceiver(screenFlagReceiver)
     }
